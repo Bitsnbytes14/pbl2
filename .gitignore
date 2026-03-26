@@ -79,3 +79,6 @@ Roommate Preferences.csv
 # Compiled frontend assets
 frontend/dist/
 backend/ml_engine/__pycache__/
+
+*.png
+backend/data/*.csv

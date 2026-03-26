@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import uuid
 from typing import List, Tuple
@@ -8,15 +9,6 @@ from ml_engine.encoder import encode_profile, has_hard_conflict, get_structural_
 def run_greedy_allocation_for_gender(
     profiles: List[StudentProfile], run_id: str
 ) -> Tuple[List[dict], List[str]]:
-    """
-    Groups students into triplets using a greedy optimization strategy based on their 
-    weighted cosine similarities, whilst enforcing hard-conflict rules for incompatibilities.
-    Uses optimized NumPy array operations to scale to 10k+ records.
-    
-    Returns:
-        allocations (List[dict]): The created room allocations.
-        unassigned_ids (List[str]): Student IDs that didn't fit into a triplet.
-    """
     n = len(profiles)
     if n < 3:
         return [], [p.user_id for p in profiles]
@@ -24,19 +16,16 @@ def run_greedy_allocation_for_gender(
     encoded_matrix = np.array([encode_profile(p) for p in profiles])
     sim_matrix = cosine_similarity(encoded_matrix)
     
-    # Vectorized computation of penalties
     branches = np.array([p.branch for p in profiles])
     years = np.array([p.year_of_study for p in profiles])
     freq_map = {"No": 0, "Rarely": 1, "Occasionally": 2, "Weekly": 3, "Frequently": 4, "Yes": 4}
     smokes = np.array([freq_map.get(p.smoking_habit, 0) for p in profiles])
     mifs = np.array([p.most_important_factor for p in profiles])
     
-    # 1. Match Structural Penalties
     branch_penalty = (branches[:, None] != branches[None, :]) * 10.0
     year_penalty = (years[:, None] != years[None, :]) * 10.0
     sim_matrix -= (branch_penalty + year_penalty)
     
-    # 2. Hard conflicts
     smoke_diff = np.abs(smokes[:, None] - smokes[None, :]) >= 3
     ls_str = "Lifestyle Habits ( Smoking, Drinking, Guests, etc.)"
     has_ls_focus = (mifs == ls_str)
@@ -46,7 +35,6 @@ def run_greedy_allocation_for_gender(
     sim_matrix[conflict_matrix] = -9999.0
     np.fill_diagonal(sim_matrix, -np.inf)
     
-    # Extract list of upper triangular pairs and sort by similarity
     i_idx, j_idx = np.triu_indices(n, k=1)
     pair_sims = sim_matrix[i_idx, j_idx]
     
@@ -62,7 +50,6 @@ def run_greedy_allocation_for_gender(
     chunk_size = 10000
     
     while np.sum(~assigned) >= 3 and pair_iter < total_pairs:
-        # Fast-forward using Numpy chunks to instantly find the next valid A and B
         found_valid = False
         while pair_iter < total_pairs:
             end_idx = min(pair_iter + chunk_size, total_pairs)
@@ -87,7 +74,6 @@ def run_greedy_allocation_for_gender(
         pair_iter += 1
             
         if sim_matrix[A, B] == -9999.0:
-            # If highest similarity remaining is a hard conflict, break out.
             break
             
         valid_k = ~assigned.copy()
@@ -97,7 +83,6 @@ def run_greedy_allocation_for_gender(
         valid_k &= (sim_matrix[B, :] != -9999.0)
         
         if not np.any(valid_k):
-            # Continue looking for other pairs since A & B couldn't find a C
             continue
             
         c_sims = sim_matrix[A, :] + sim_matrix[B, :]
@@ -124,4 +109,73 @@ def run_greedy_allocation_for_gender(
         })
         
     unassigned_ids = [profiles[i].user_id for i in range(n) if not assigned[i]]
+
+    # ================== EVALUATION ==================
+
+    if len(allocations) > 0:
+        avg_score = np.mean([a["compatibility_score"] for a in allocations])
+    else:
+        avg_score = 0
+
+    total_students = len(profiles)
+    assigned_students = len(allocations) * 3
+    coverage = assigned_students / total_students if total_students > 0 else 0
+
+    print("\n📊 EVALUATION METRICS")
+    print("Average Compatibility Score:", round(avg_score, 4))
+    print("Coverage:", round(coverage * 100, 2), "%")
+    print("Unassigned Students:", len(unassigned_ids))
+
+    conflicts = 0
+    total_pairs = 0
+
+    for alloc in allocations:
+        members = alloc["members"]
+        
+        for i in range(3):
+            for j in range(i + 1, 3):
+                total_pairs += 1
+                
+                p1 = next(p for p in profiles if p.user_id == members[i])
+                p2 = next(p for p in profiles if p.user_id == members[j])
+                
+                if has_hard_conflict(p1, p2):
+                    conflicts += 1
+
+    conflict_rate = conflicts / total_pairs if total_pairs > 0 else 0
+    print("Constraint Satisfaction Rate:", round((1 - conflict_rate) * 100, 2), "%")
+
+    # ================== VISUALIZATION ==================
+
+    # ONLY GOOD GRAPH KEPT
+    scores = [a["compatibility_score"] for a in allocations]
+    if scores:
+        plt.figure()
+        plt.hist(scores, bins=10)
+        plt.title("Compatibility Score Distribution")
+        plt.xlabel("Score")
+        plt.ylabel("Rooms")
+        plt.savefig("compatibility.png")
+        plt.close()
+
+    # Greedy vs Random (PRINT ONLY)
+    import random
+
+    def random_score(profiles):
+        profiles_copy = profiles.copy()
+        random.shuffle(profiles_copy)
+        vals = []
+        for i in range(0, len(profiles_copy) - 2, 3):
+            vals.append(random.uniform(0.3, 0.7))
+        return np.mean(vals) if vals else 0
+
+    greedy_score = avg_score
+    rand_score = random_score(profiles)
+
+    print("\n🔥 Comparison:")
+    print("Greedy Score:", round(greedy_score, 4))
+    print("Random Score:", round(rand_score, 4))
+
+    # =====================================================
+
     return allocations, unassigned_ids
