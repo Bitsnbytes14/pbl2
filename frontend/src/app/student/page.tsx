@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { LogOut, Home, Users, Loader2, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
+import RoomChat from "@/components/RoomChat";
 
 export default function StudentDashboard() {
   const { data: session, status } = useSession();
@@ -187,6 +188,15 @@ export default function StudentDashboard() {
                     </div>
                   </motion.div>
                 ))}
+              </div>
+              
+              {/* Roommate Chat Area */}
+              <div className="mt-12 pt-8 border-t border-slate-100">
+                <RoomChat 
+                  roomId={allocation.room_id} 
+                  currentUserEmail={session?.user?.email as string} 
+                  currentUserName={session?.user?.name as string} 
+                />
               </div>
             </div>
           ) : (

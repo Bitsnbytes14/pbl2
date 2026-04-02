@@ -20,6 +20,7 @@ exports.getDashboardData = async (req, res) => {
             
             return res.json({
                 status: 'ALLOCATED',
+                room_id: allocation._id,
                 room_number: allocation.room_number || allocation.allocation_run_id,
                 roommates: roommatesDocs.map(r => ({
                     name: r.name,

@@ -7,6 +7,7 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
 const studentRoutes = require('./routes/student');
+const chatRoutes = require('./routes/chat');
 
 const app = express();
 
@@ -32,6 +33,7 @@ connectDB();
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/student', studentRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
