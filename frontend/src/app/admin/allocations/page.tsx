@@ -4,10 +4,12 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { ArrowLeft, Database, Download, Lock, Unlock, Shuffle } from "lucide-react";
+import { ArrowLeft, Database, Download, Lock, Unlock, Shuffle, FileText } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { API_URL } from "@/lib/api";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export default function AdminAllocations() {
   const { data: session, status } = useSession();
@@ -81,24 +83,111 @@ export default function AdminAllocations() {
       }
   }
 
-  const downloadCSV = async () => {
-    try {
-        const response = await axios({
-            url: `${API_URL}/api/admin/allocations/report`,
-            method: 'GET',
-            responseType: 'blob'
-        });
-        
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'Preference_Fulfillment_Report.csv');
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-    } catch (err) {
-        alert("Failed to generate report from ML engine.");
+  const downloadPDF = () => {
+    if (allocations.length === 0) {
+        alert("No allocations to export. Run the engine first.");
+        return;
     }
+
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const now = new Date().toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' });
+
+    // Header
+    doc.setFillColor(26, 58, 42); // #1A3A2A
+    doc.rect(0, 0, pageWidth, 28, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SIT Pune — Hostel Room Allocation Report', 14, 14);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Generated: ${now}  |  Total Rooms: ${allocations.length}  |  Unassigned: ${unassigned.length}`, 14, 22);
+
+    // Sort allocations by room number
+    const sorted = [...allocations].sort((a: any, b: any) => (a.room_number || '').localeCompare(b.room_number || ''));
+
+    // Table data
+    const tableRows = sorted.map((a: any) => {
+        const members = (a.memberDetails || a.members || []).map((m: string, i: number) => `${i + 1}. ${m}`).join('\n');
+        const score = typeof a.compatibility_score === 'number' ? `${(a.compatibility_score * 100).toFixed(1)}%` : 'N/A';
+        return [
+            a.room_number || '-',
+            `Block ${a.block || '-'}\nFloor ${a.floor || '-'}`,
+            a.gender_group || '-',
+            score,
+            members,
+            a.isLocked ? 'LOCKED' : 'Open'
+        ];
+    });
+
+    autoTable(doc, {
+        startY: 34,
+        head: [['Room', 'Location', 'Category', 'Match %', 'Assigned Students', 'Status']],
+        body: tableRows,
+        theme: 'grid',
+        headStyles: {
+            fillColor: [196, 97, 58], // #C4613A
+            textColor: [255, 255, 255],
+            fontStyle: 'bold',
+            fontSize: 9,
+            halign: 'center',
+            cellPadding: 4
+        },
+        bodyStyles: {
+            fontSize: 8,
+            cellPadding: 3,
+            textColor: [58, 79, 68], // #3A4F44
+            lineColor: [200, 200, 200],
+            lineWidth: 0.25
+        },
+        alternateRowStyles: {
+            fillColor: [247, 244, 238] // #F7F4EE
+        },
+        columnStyles: {
+            0: { halign: 'center', fontStyle: 'bold', cellWidth: 25 },
+            1: { halign: 'center', cellWidth: 28 },
+            2: { halign: 'center', cellWidth: 35 },
+            3: { halign: 'center', cellWidth: 22 },
+            4: { cellWidth: 'auto' },
+            5: { halign: 'center', cellWidth: 22 }
+        },
+        didDrawPage: (data: any) => {
+            // Footer on each page
+            const pageCount = (doc as any).internal.getNumberOfPages();
+            doc.setFontSize(8);
+            doc.setTextColor(150);
+            doc.text(
+                `Page ${data.pageNumber} of ${pageCount}  —  Hostel Allocation System  —  SIT Pune`,
+                pageWidth / 2, doc.internal.pageSize.getHeight() - 8,
+                { align: 'center' }
+            );
+        }
+    });
+
+    // Unassigned section (if any)
+    if (unassigned.length > 0) {
+        const finalY = (doc as any).lastAutoTable?.finalY || 40;
+        const remainingSpace = doc.internal.pageSize.getHeight() - finalY;
+        if (remainingSpace < 40) doc.addPage();
+        const startY = remainingSpace < 40 ? 20 : finalY + 12;
+
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(196, 97, 58);
+        doc.text(`Unassigned Students (${unassigned.length})`, 14, startY);
+
+        autoTable(doc, {
+            startY: startY + 4,
+            head: [['#', 'Student']],
+            body: unassigned.map((u: string, i: number) => [String(i + 1), u]),
+            theme: 'grid',
+            headStyles: { fillColor: [120, 120, 120], fontSize: 9 },
+            bodyStyles: { fontSize: 8 },
+        });
+    }
+
+    doc.save('Hostel_Allocations_Report.pdf');
   }
 
   if (status === "loading") return null;
@@ -115,8 +204,8 @@ export default function AdminAllocations() {
                     <button onClick={() => setSwapping(!swapping)} className="bg-white border border-[#1A3A2A]/10 hover:border-[#1A3A2A]/20 text-[#1A3A2A] px-5 py-2.5 rounded-full text-[13px] font-medium flex items-center gap-2 transition-all shadow-sm">
                         <Shuffle size={16}/> Manual Swap
                     </button>
-                    <button onClick={downloadCSV} className="bg-[#C4613A] hover:bg-[#D4784F] text-white px-5 py-2.5 rounded-full text-[13px] font-medium flex items-center gap-2 shadow-[0_4px_24px_rgba(196,97,58,0.3)] hover:-translate-y-[1px] hover:shadow-[0_12px_36px_rgba(196,97,58,0.4)] transition-all">
-                        <Download size={16} strokeWidth={2.5}/> Download CSV Report
+                    <button onClick={downloadPDF} className="bg-[#C4613A] hover:bg-[#D4784F] text-white px-5 py-2.5 rounded-full text-[13px] font-medium flex items-center gap-2 shadow-[0_4px_24px_rgba(196,97,58,0.3)] hover:-translate-y-[1px] hover:shadow-[0_12px_36px_rgba(196,97,58,0.4)] transition-all">
+                        <FileText size={16} strokeWidth={2.5}/> Download PDF Report
                     </button>
                 </div>
             </div>
