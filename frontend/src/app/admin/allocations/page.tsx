@@ -46,14 +46,25 @@ export default function AdminAllocations() {
   };
 
   const toggleLock = async (roomId: string, currentLockStatus: boolean) => {
+      const newStatus = !currentLockStatus;
+      
+      // Optimistic UI Update: Instantly change the button state before server replies
+      setAllocations((prev: any) => prev.map((a: any) => 
+          a._id === roomId ? { ...a, isLocked: newStatus } : a
+      ));
+
       try {
           await axios.post(`${API_URL}/api/admin/allocations/toggle-lock`, {
               roomId: roomId,
-              isLocked: !currentLockStatus
+              isLocked: newStatus
           });
-          fetchAllocations();
+          // No need to fetchAllocations() again since we already updated the state!
       } catch (err) {
-          alert('Failed to update lock status');
+          // Rollback the UI if the server actually fails
+          setAllocations((prev: any) => prev.map((a: any) => 
+              a._id === roomId ? { ...a, isLocked: currentLockStatus } : a
+          ));
+          alert('Failed to update lock status in the database.');
       }
   }
 
