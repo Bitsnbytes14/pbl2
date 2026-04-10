@@ -24,6 +24,8 @@ services:
     envVars:
       - key: PORT
         value: 8000
+      - key: PYTHON_VERSION
+        value: 3.10.0
 
   # 3. Frontend (Next.js App)
   - type: web
