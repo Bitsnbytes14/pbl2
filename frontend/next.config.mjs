@@ -13,14 +13,6 @@ const nextConfig = {
     // !! WARN !!
     ignoreBuildErrors: true,
   },
-  webpack: (config, { isServer }) => {
-    if (isServer) {
-      // Prevent jspdf and fflate from being bundled during SSR
-      config.externals = config.externals || [];
-      config.externals.push('jspdf', 'jspdf-autotable');
-    }
-    return config;
-  },
 };
 
 export default nextConfig;

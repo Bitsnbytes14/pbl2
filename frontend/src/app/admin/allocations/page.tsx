@@ -87,10 +87,27 @@ export default function AdminAllocations() {
         return;
     }
 
-    // Dynamic import to avoid SSR issues with fflate
-    const { default: jsPDF } = await import('jspdf');
-    const { default: autoTable } = await import('jspdf-autotable');
+    // Load jsPDF from CDN to completely avoid Next.js SSR/webpack issues
+    const loadScript = (src: string): Promise<void> => {
+        return new Promise((resolve, reject) => {
+            if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = () => resolve();
+            s.onerror = () => reject(new Error(`Failed to load ${src}`));
+            document.head.appendChild(s);
+        });
+    };
 
+    try {
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+        await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js');
+    } catch {
+        alert("Failed to load PDF library. Check your internet connection.");
+        return;
+    }
+
+    const { jsPDF } = (window as any).jspdf;
     const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
     const now = new Date().toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' });
@@ -123,7 +140,7 @@ export default function AdminAllocations() {
         ];
     });
 
-    autoTable(doc, {
+    (doc as any).autoTable({
         startY: 34,
         head: [['Room', 'Location', 'Category', 'Match %', 'Assigned Students', 'Status']],
         body: tableRows,
@@ -179,7 +196,7 @@ export default function AdminAllocations() {
         doc.setTextColor(196, 97, 58);
         doc.text(`Unassigned Students (${unassigned.length})`, 14, startY);
 
-        autoTable(doc, {
+        (doc as any).autoTable({
             startY: startY + 4,
             head: [['#', 'Student']],
             body: unassigned.map((u: string, i: number) => [String(i + 1), u]),
