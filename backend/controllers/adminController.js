@@ -156,11 +156,10 @@ exports.triggerAllocation = async (req, res) => {
             return await runPythonAllocation(pool);
         };
 
-        const [resGFY, resGSenior, resBoys] = await Promise.all([
-            runPool(girlsFY),
-            runPool(girlsSenior),
-            runPool(boysAll)
-        ]);
+        // Execute sequentially to avoid memory spikes on the Python backend!
+        const resGFY = await runPool(girlsFY);
+        const resGSenior = await runPool(girlsSenior);
+        const resBoys = await runPool(boysAll);
 
         let allUnassigned = [
             ...(resGFY.unassigned_ids || []),
